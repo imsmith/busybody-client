@@ -18,9 +18,3 @@ func defaultConfig() Config {
 		RegistryURL: "http://localhost:5150",
 	}
 }
-
-// run is defined fully in run.go (Task 4). Temporary stub for compilation.
-func run(cfg Config) int {
-	_ = cfg
-	return 0
-}
