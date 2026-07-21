@@ -25,12 +25,13 @@ done
 if [ -z "$NAME" ]; then echo "busybody-run: --name is required" >&2; exit 2; fi
 if [ $# -eq 0 ]; then echo "busybody-run: no command after --" >&2; exit 2; fi
 
-# Launch the child; exec-in-subshell keeps CHILD_PID as the app's own PID.
+# Launch the child in the background; $! is then the app's own PID.
 "$@" &
 CHILD_PID=$!
 
-cleanup() { kill "$CHILD_PID" 2>/dev/null || true; }
-trap 'cleanup' TERM INT
+forward() { kill -s "$1" "$CHILD_PID" 2>/dev/null || true; }
+trap 'forward TERM' TERM
+trap 'forward INT' INT
 
 # Discover the child's first LISTEN port unless --port was given.
 discover_port() {
@@ -58,10 +59,17 @@ resolve_port() {
     done
 }
 
+# Escape backslashes and double-quotes for safe embedding in a JSON string.
+json_escape() {
+    printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g'
+}
+
 register() {
+    _name=$(json_escape "$NAME")
+    _host=$(json_escape "$HOST")
     curl -fsS -m 3 -X POST "$REGISTRY_URL/api/register" \
         -H "Content-Type: application/json" \
-        -d "{\"name\":\"$NAME\",\"port\":$1,\"pid\":\"$CHILD_PID\",\"host\":\"$HOST\"}" \
+        -d "{\"name\":\"$_name\",\"port\":$1,\"pid\":\"$CHILD_PID\",\"host\":\"$_host\"}" \
         >/dev/null 2>&1 \
         || echo "busybody-run: register failed (will retry)" >&2
 }
@@ -79,8 +87,13 @@ register() {
 ) &
 HB_PID=$!
 
-# Wait for the child, propagate its exit code, tidy up the heartbeat loop.
-wait "$CHILD_PID"
-CODE=$?
+# Wait for the child and propagate its real exit code. A trapped signal
+# interrupts wait with status >128; re-wait until the child is actually gone
+# so CODE reflects the child's own exit status, not the interrupted wait.
+while :; do
+    wait "$CHILD_PID"
+    CODE=$?
+    kill -0 "$CHILD_PID" 2>/dev/null || break
+done
 kill "$HB_PID" 2>/dev/null || true
 exit "$CODE"

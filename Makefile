@@ -8,3 +8,4 @@ test:
 
 test-sh:
 	sh/test-smoke.sh
+	sh/test-exit-code.sh
