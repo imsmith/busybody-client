@@ -169,5 +169,32 @@ func TestRun_ExitCodePropagates(t *testing.T) {
 	}
 }
 
+// TestRun_SignaledChildExitCode: a child killed by SIGTERM (no handler) yields
+// 128+15=143, matching the POSIX-sh wrapper's behavior.
+func TestRun_SignaledChildExitCode(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(200)
+	}))
+	defer srv.Close()
+
+	discoverTimeout = 300 * time.Millisecond
+	discoverInterval = 20 * time.Millisecond
+	defer func() {
+		discoverTimeout = 10 * time.Second
+		discoverInterval = 200 * time.Millisecond
+	}()
+
+	cfg := Config{
+		Name:        "signaled",
+		Host:        "h",
+		RegistryURL: srv.URL,
+		Command:     []string{"sh", "-c", "kill -TERM $$"},
+	}
+	code := run(cfg)
+	if code != 143 {
+		t.Errorf("exit code = %d, want 143 (128+SIGTERM)", code)
+	}
+}
+
 // ensure exec import is used even if the helper path changes
 var _ = exec.Command
