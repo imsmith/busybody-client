@@ -1,0 +1,86 @@
+#!/bin/sh
+# busybody-run — wrap an HTTP dev app, register it with a busybody directory,
+# and heartbeat every 60s. POSIX sh. Requires: curl, ss (iproute2).
+#
+# Usage:
+#   busybody-run --name NAME [--port PORT] [--host HOST] [--registry-url URL] -- CMD [ARGS...]
+set -u
+
+NAME=""
+PORT=""
+HOST="$(hostname)"
+REGISTRY_URL="http://localhost:5150"
+
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --name)         NAME="$2"; shift 2 ;;
+        --port)         PORT="$2"; shift 2 ;;
+        --host)         HOST="$2"; shift 2 ;;
+        --registry-url) REGISTRY_URL="$2"; shift 2 ;;
+        --)             shift; break ;;
+        *) echo "busybody-run: unknown flag $1" >&2; exit 2 ;;
+    esac
+done
+
+if [ -z "$NAME" ]; then echo "busybody-run: --name is required" >&2; exit 2; fi
+if [ $# -eq 0 ]; then echo "busybody-run: no command after --" >&2; exit 2; fi
+
+# Launch the child; exec-in-subshell keeps CHILD_PID as the app's own PID.
+"$@" &
+CHILD_PID=$!
+
+cleanup() { kill "$CHILD_PID" 2>/dev/null || true; }
+trap 'cleanup' TERM INT
+
+# Discover the child's first LISTEN port unless --port was given.
+discover_port() {
+    ss -Htlnp 2>/dev/null | awk -v pid="$CHILD_PID" '
+        $0 ~ ("pid=" pid ",") {
+            split($4, a, ":"); print a[length(a)]; exit
+        }'
+}
+
+resolve_port() {
+    if [ -n "$PORT" ]; then echo "$PORT"; return; fi
+    i=0
+    while [ "$i" -lt 50 ]; do          # ~10s at 200ms
+        p=$(discover_port)
+        if [ -n "$p" ]; then echo "$p"; return; fi
+        sleep 0.2
+        i=$((i + 1))
+    done
+    # keep trying past the timeout, but warn once
+    echo "busybody-run: no listening port after ~10s; still watching" >&2
+    while kill -0 "$CHILD_PID" 2>/dev/null; do
+        p=$(discover_port)
+        if [ -n "$p" ]; then echo "$p"; return; fi
+        sleep 0.2
+    done
+}
+
+register() {
+    curl -fsS -m 3 -X POST "$REGISTRY_URL/api/register" \
+        -H "Content-Type: application/json" \
+        -d "{\"name\":\"$NAME\",\"port\":$1,\"pid\":\"$CHILD_PID\",\"host\":\"$HOST\"}" \
+        >/dev/null 2>&1 \
+        || echo "busybody-run: register failed (will retry)" >&2
+}
+
+# Resolve + register + heartbeat in the background so we can wait on the child.
+(
+    RP=$(resolve_port)
+    [ -z "$RP" ] && exit 0
+    register "$RP"
+    while kill -0 "$CHILD_PID" 2>/dev/null; do
+        sleep 60
+        kill -0 "$CHILD_PID" 2>/dev/null || break
+        register "$RP"
+    done
+) &
+HB_PID=$!
+
+# Wait for the child, propagate its exit code, tidy up the heartbeat loop.
+wait "$CHILD_PID"
+CODE=$?
+kill "$HB_PID" 2>/dev/null || true
+exit "$CODE"
