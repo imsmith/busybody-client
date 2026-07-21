@@ -43,10 +43,15 @@ func run(cfg Config) int {
 	}()
 
 	// Resolve the port, then register + heartbeat until the child exits.
-	go registerLoop(cfg, client, pid, stop)
+	regDone := make(chan struct{})
+	go func() {
+		registerLoop(cfg, client, pid, stop)
+		close(regDone)
+	}()
 
 	err := cmd.Wait()
 	close(stop)
+	<-regDone // wait for registerLoop to observe stop and return before we do
 	signal.Stop(sigCh)
 	close(sigCh)
 	return exitCode(err)

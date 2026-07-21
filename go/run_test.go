@@ -132,18 +132,14 @@ func TestRun_RegistersHeartbeatsAndPropagatesExit(t *testing.T) {
 		t.Errorf("registered body %q missing discovered port %d", body, childPort)
 	}
 
-	// Terminate the wrapper; it should signal the child and return its exit code.
-	proc, _ := os.FindProcess(os.Getpid())
-	_ = proc // wrapper handles its own child; we just wait for run() to return
-	// The helper blocks forever, so kill via the exported hook: send SIGTERM to run's child.
-	// run() installs a signal handler; deliver SIGTERM to our own process group child by
-	// stopping the test through cfg — instead we rely on killing the child directly:
-	// Simplest: after assertions, send SIGTERM to the whole process; but that kills the test.
-	// So we assert exit-code propagation in a separate, faster unit below.
+	// Terminate the child so the wrapper's run() returns; then wait for it to
+	// fully return (joining its goroutines) before this test's deferred var
+	// restores fire — otherwise the restore races the still-running registerLoop.
+	killHelperProcess(t, childPort)
 	select {
 	case <-done:
-	case <-time.After(2 * time.Second):
-		t.Log("run still active; heartbeat path verified")
+	case <-time.After(5 * time.Second):
+		t.Fatal("run() did not return after the child was killed")
 	}
 }
 
