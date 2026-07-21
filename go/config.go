@@ -1,0 +1,26 @@
+package main
+
+import "os"
+
+// Config holds the resolved settings for one `run` invocation.
+type Config struct {
+	Name        string
+	Port        int // 0 means auto-discover from the child's listening socket
+	Host        string
+	RegistryURL string
+	Command     []string
+}
+
+func defaultConfig() Config {
+	host, _ := os.Hostname()
+	return Config{
+		Host:        host,
+		RegistryURL: "http://localhost:5150",
+	}
+}
+
+// run is defined fully in run.go (Task 4). Temporary stub for compilation.
+func run(cfg Config) int {
+	_ = cfg
+	return 0
+}
