@@ -43,11 +43,11 @@ defmodule Busybody.Client do
   end
 
   @doc """
-  Build the JSON registration payload from the given opts.
+  Build the JSON registration payload from the given opts and bound port.
 
   ## Examples
 
-      iex> payload = Busybody.Client.build_payload(name: "demo", port: 4000, host: "devbox")
+      iex> payload = Busybody.Client.build_payload([name: "demo", host: "devbox"], 4000)
       iex> payload.name
       "demo"
       iex> payload.port
@@ -58,13 +58,13 @@ defmodule Busybody.Client do
       true
 
   """
-  @spec build_payload(keyword()) :: payload()
-  def build_payload(opts) do
+  @spec build_payload(keyword(), pos_integer()) :: payload()
+  def build_payload(opts, port) do
     {:ok, hostname} = :inet.gethostname()
 
     %{
       name: Keyword.fetch!(opts, :name),
-      port: resolve_port(opts),
+      port: port,
       pid: System.pid() |> to_string(),
       host: Keyword.get(opts, :host, to_string(hostname))
     }
@@ -75,35 +75,30 @@ defmodule Busybody.Client do
   defp maybe_put(map, key, value), do: Map.put(map, key, value)
 
   @doc """
-  Resolve the port from opts — either an explicit `:port` or by
-  querying the `:endpoint` module's HTTP config.
+  Resolve the port from opts: an explicit `:port`, or the port the
+  `:endpoint` actually bound. Returns `{:error, :no_server}` when the
+  endpoint is running without a server (`mix run`, tasks, tests), so the
+  client can wait instead of crashing.
 
   ## Examples
 
       iex> Busybody.Client.resolve_port(port: 4567)
-      4567
+      {:ok, 4567}
 
       iex> Busybody.Client.resolve_port(name: "oops")
       ** (ArgumentError) Busybody.Client requires either :port or :endpoint option
 
   """
-  @spec resolve_port(keyword()) :: pos_integer()
+  @spec resolve_port(keyword()) :: {:ok, pos_integer()} | {:error, term()}
   def resolve_port(opts) do
     cond do
       Keyword.has_key?(opts, :port) ->
-        Keyword.get(opts, :port)
+        {:ok, Keyword.fetch!(opts, :port)}
 
       Keyword.has_key?(opts, :endpoint) ->
-        endpoint = Keyword.get(opts, :endpoint)
-
-        case Keyword.get(endpoint.config(:url, []), :port) do
-          port when is_integer(port) and port > 0 ->
-            port
-
-          _ ->
-            # Get the actual bound port from the running server
-            {:ok, {_ip, port}} = endpoint.server_info(:http)
-            port
+        case Keyword.fetch!(opts, :endpoint).server_info(:http) do
+          {:ok, {_ip, port}} -> {:ok, port}
+          {:error, reason} -> {:error, reason}
         end
 
       true ->
@@ -115,25 +110,29 @@ defmodule Busybody.Client do
   def init(opts) do
     state = %{
       opts: opts,
+      port: 0,
       registry_url: Keyword.get(opts, :registry_url, @default_registry_url),
       heartbeat_interval: Keyword.get(opts, :heartbeat_interval, @heartbeat_interval)
     }
 
-    Process.send_after(self(), :register, @startup_delay)
+    Process.send_after(self(), :heartbeat, @startup_delay)
     {:ok, state}
   end
 
-  @impl true
-  def handle_info(:register, state) do
-    payload = build_payload(state.opts)
-    do_register(state.registry_url, payload)
-    schedule_heartbeat(state.heartbeat_interval)
-    {:noreply, Map.put(state, :payload, payload)}
-  end
-
+  # Port 0 means "not bound yet". Each tick retries resolution until the
+  # endpoint reports a bound port; an error is ignored, not raised.
   @impl true
   def handle_info(:heartbeat, state) do
-    do_register(state.registry_url, state.payload)
+    state =
+      case resolve_port(state.opts) do
+        {:ok, port} when port > 0 ->
+          do_register(state.registry_url, build_payload(state.opts, port))
+          %{state | port: port}
+
+        _ ->
+          state
+      end
+
     schedule_heartbeat(state.heartbeat_interval)
     {:noreply, state}
   end

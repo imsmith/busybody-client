@@ -6,7 +6,7 @@ defmodule Busybody.ClientTest do
 
   describe "build_payload/1" do
     test "builds registration payload from opts" do
-      payload = Client.build_payload(name: "myapp", port: 4000, host: "devbox")
+      payload = Client.build_payload([name: "myapp", host: "devbox"], 4000)
 
       assert payload.name == "myapp"
       assert payload.port == 4000
@@ -15,25 +15,33 @@ defmodule Busybody.ClientTest do
     end
 
     test "defaults host to system hostname" do
-      payload = Client.build_payload(name: "myapp", port: 4000)
+      payload = Client.build_payload([name: "myapp"], 4000)
       {:ok, hostname} = :inet.gethostname()
       assert payload.host == to_string(hostname)
     end
 
     test "omits group unless given" do
-      refute Map.has_key?(Client.build_payload(name: "myapp", port: 4000), :group)
-      assert Client.build_payload(name: "myapp", port: 4000, group: "infra").group == "infra"
+      refute Map.has_key?(Client.build_payload([name: "myapp"], 4000), :group)
+      assert Client.build_payload([name: "myapp", group: "infra"], 4000).group == "infra"
     end
 
     test "uses system pid" do
-      payload = Client.build_payload(name: "myapp", port: 4000)
+      payload = Client.build_payload([name: "myapp"], 4000)
       assert payload.pid == System.pid() |> to_string()
     end
   end
 
   describe "resolve_port/1" do
     test "returns port from explicit opt" do
-      assert Client.resolve_port(port: 4567) == 4567
+      assert Client.resolve_port(port: 4567) == {:ok, 4567}
+    end
+
+    test "returns error, not a crash, when the endpoint has no server" do
+      defmodule NoServer do
+        def server_info(:http), do: {:error, :no_server_found}
+      end
+
+      assert Client.resolve_port(endpoint: NoServer) == {:error, :no_server_found}
     end
 
     test "raises when neither port nor endpoint given" do
