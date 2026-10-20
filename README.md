@@ -34,6 +34,8 @@ and the app is ungrouped.
 
 Guard the child with `Code.ensure_loaded?(Busybody.Client)` if the same
 `application.ex` must boot in prod and test, where the dep is absent.
+If the endpoint has no bound port (`mix run`, Mix tasks, tests) the client
+idles and retries each heartbeat; it never crashes the app.
 Test the library with `mix test`.
 
 ## Process wrappers

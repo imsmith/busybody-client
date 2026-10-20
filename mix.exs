@@ -6,7 +6,7 @@ defmodule BusybodyClient.MixProject do
     [
       app: :busybody_client,
       version: "0.1.0",
-      elixir: "~> 1.18",
+      elixir: "~> 1.20",
       start_permanent: false,
       deps: deps(),
       description: "Register a Phoenix app with a local busybody directory and heartbeat",

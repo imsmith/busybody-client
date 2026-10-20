@@ -2,6 +2,10 @@ defmodule Busybody.Client do
   @moduledoc """
   GenServer for consumer apps to register with the Busybody directory.
 
+  Starts with no port and resolves it on each tick, so an app booted
+  without a server (`mix run`, Mix tasks, tests) idles instead of
+  crashing. Registry errors are logged and ignored.
+
   Add to your supervision tree (dev only):
 
       children = [
@@ -150,11 +154,11 @@ defmodule Busybody.Client do
       {:ok, {{_, 200, _}, _, _}} ->
         Logger.debug("Busybody: registered #{payload.name} on port #{payload.port}")
 
+      {:ok, {{_, status, _}, _, _}} ->
+        Logger.warning("Busybody: registration returned HTTP #{status}")
+
       {:error, reason} ->
         Logger.warning("Busybody: registration failed: #{inspect(reason)}")
-
-      other ->
-        Logger.warning("Busybody: unexpected response: #{inspect(other)}")
     end
   end
 
