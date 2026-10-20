@@ -1,0 +1,68 @@
+// As-built system context for busybody-client.
+// Derived from: Makefile, go/{main,config,register,run,discover_linux}.go,
+// go/go.mod, sh/busybody-run, sh/test-smoke.sh, sh/test-exit-code.sh.
+// The specification block for this project is declared here and only here.
+
+specification {
+    element actor {
+        style {
+            shape browser
+            color muted
+        }
+    }
+    element system
+    element container
+    element component
+
+    relationship ipc
+    relationship message
+    relationship rpc
+    relationship http
+    relationship signal
+}
+
+model {
+    developer = actor {
+        title 'Developer'
+        description 'Runs the wrapper in place of the app command: `busybody run --name NAME -- CMD ...`.'
+        technology 'Shell'
+    }
+
+    childapp = system {
+        title 'Wrapped Dev App'
+        description 'Any local HTTP app, in any language. Launched as a direct child of the wrapper, inheriting stdio. Port discovery matches only the direct child PID — apps that fork a separate listener must pass --port.'
+        technology 'Any executable'
+    }
+
+    busybody = system {
+        title 'Busybody Directory'
+        description 'The directory the wrapper registers with, default http://localhost:5150. Every registry call is best-effort: if it is down, the child still runs and the wrapper still returns the child exit code.'
+        technology 'Phoenix app (separate repo)'
+    }
+
+    procfs = system {
+        title 'Kernel Socket Tables'
+        description 'The source of truth for port discovery. The Go wrapper reads /proc/PID/fd and /proc/net/tcp{,6} directly; the sh wrapper shells out to `ss -Htlnp`. Both are Linux-only.'
+        technology '/proc, iproute2'
+    }
+
+    busybodyclient = system {
+        title 'busybody-client'
+        description 'Language-neutral wrappers implementing one CLI contract. Launch the app as a child, discover its listening port (or take --port), register with the child PID, heartbeat every 60s, forward SIGTERM/SIGINT, and exit with the child exit code.'
+        technology 'Go (static binary) + POSIX sh'
+    }
+
+    developer -[ipc]-> busybodyclient "busybody run / busybody-run --name NAME -- CMD"
+    busybodyclient -[ipc]-> childapp "Spawns as a direct child, inherits stdio"
+    busybodyclient -[signal]-> childapp "Forwards SIGTERM and SIGINT; exits with the child exit code"
+    busybodyclient -[ipc]-> procfs "Polls every 200ms for ~10s to find the child's first TCP LISTEN port"
+    busybodyclient -[http]-> busybody "POST /api/register on start and every 60s, best-effort"
+}
+
+views {
+    view {
+        title "busybody-client System Context"
+        description "A supervising wrapper between the developer's command line and the busybody directory. As built."
+        include *
+    }
+}

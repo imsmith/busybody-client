@@ -10,7 +10,7 @@ import (
 const usage = `busybody — register a local dev app with a busybody directory
 
 Usage:
-  busybody run --name NAME [--port PORT] [--host HOST] [--registry-url URL] -- CMD [ARGS...]
+  busybody run --name NAME [--port PORT] [--host HOST] [--group GROUP] [--registry-url URL] -- CMD [ARGS...]
 
 The command after -- is launched as a child. busybody registers it, heartbeats
 every 60s, forwards SIGTERM/SIGINT to it, and exits with its exit code.`
@@ -53,6 +53,11 @@ func parseRunArgs(args []string) (Config, error) {
 			cfg.Port = p
 		case "--host":
 			cfg.Host = val
+		case "--group":
+			if val == "" {
+				return cfg, errors.New("--group must not be empty")
+			}
+			cfg.Group = val
 		case "--registry-url":
 			cfg.RegistryURL = val
 		default:

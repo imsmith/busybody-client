@@ -24,6 +24,20 @@ func TestBuildPayload_PidIsString(t *testing.T) {
 	}
 }
 
+func TestBuildPayload_GroupOmittedWhenEmpty(t *testing.T) {
+	b, _ := json.Marshal(buildPayload(Config{Name: "foo", Host: "h"}, 1, 2))
+	var raw map[string]any
+	_ = json.Unmarshal(b, &raw)
+	if _, present := raw["group"]; present {
+		t.Errorf("group must be omitted when unset, got %v", raw["group"])
+	}
+	b, _ = json.Marshal(buildPayload(Config{Name: "foo", Host: "h", Group: "infra"}, 1, 2))
+	_ = json.Unmarshal(b, &raw)
+	if raw["group"] != "infra" {
+		t.Errorf("group = %v, want \"infra\"", raw["group"])
+	}
+}
+
 func TestPostRegister_SendsCorrectRequest(t *testing.T) {
 	var gotPath, gotBody string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

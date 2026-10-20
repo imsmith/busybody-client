@@ -1,2 +1,8 @@
 /busybody
 /.superpowers/
+/_build/
+/deps/
+/cover/
+/doc/
+*.ez
+erl_crash.dump

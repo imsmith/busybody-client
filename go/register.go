@@ -9,18 +9,20 @@ import (
 )
 
 type payload struct {
-	Name string `json:"name"`
-	Port int    `json:"port"`
-	Pid  string `json:"pid"`
-	Host string `json:"host"`
+	Name  string `json:"name"`
+	Port  int    `json:"port"`
+	Pid   string `json:"pid"`
+	Host  string `json:"host"`
+	Group string `json:"group,omitempty"`
 }
 
 func buildPayload(cfg Config, port, pid int) payload {
 	return payload{
-		Name: cfg.Name,
-		Port: port,
-		Pid:  strconv.Itoa(pid), // server requires pid as a string
-		Host: cfg.Host,
+		Name:  cfg.Name,
+		Port:  port,
+		Pid:   strconv.Itoa(pid), // server requires pid as a string
+		Host:  cfg.Host,
+		Group: cfg.Group,
 	}
 }
 

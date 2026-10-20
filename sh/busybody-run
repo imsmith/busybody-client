@@ -3,12 +3,13 @@
 # and heartbeat every 60s. POSIX sh. Requires: curl, ss (iproute2).
 #
 # Usage:
-#   busybody-run --name NAME [--port PORT] [--host HOST] [--registry-url URL] -- CMD [ARGS...]
+#   busybody-run --name NAME [--port PORT] [--host HOST] [--group GROUP] [--registry-url URL] -- CMD [ARGS...]
 set -u
 
 NAME=""
 PORT=""
 HOST="$(hostname)"
+GROUP=""
 REGISTRY_URL="http://localhost:5150"
 
 while [ $# -gt 0 ]; do
@@ -16,6 +17,7 @@ while [ $# -gt 0 ]; do
         --name)         NAME="$2"; shift 2 ;;
         --port)         PORT="$2"; shift 2 ;;
         --host)         HOST="$2"; shift 2 ;;
+        --group)        GROUP="$2"; shift 2 ;;
         --registry-url) REGISTRY_URL="$2"; shift 2 ;;
         --)             shift; break ;;
         *) echo "busybody-run: unknown flag $1" >&2; exit 2 ;;
@@ -67,9 +69,11 @@ json_escape() {
 register() {
     _name=$(json_escape "$NAME")
     _host=$(json_escape "$HOST")
+    _group=""
+    [ -n "$GROUP" ] && _group=",\"group\":\"$(json_escape "$GROUP")\""
     curl -fsS -m 3 -X POST "$REGISTRY_URL/api/register" \
         -H "Content-Type: application/json" \
-        -d "{\"name\":\"$_name\",\"port\":$1,\"pid\":\"$CHILD_PID\",\"host\":\"$_host\"}" \
+        -d "{\"name\":\"$_name\",\"port\":$1,\"pid\":\"$CHILD_PID\",\"host\":\"$_host\"$_group}" \
         >/dev/null 2>&1 \
         || echo "busybody-run: register failed (will retry)" >&2
 }

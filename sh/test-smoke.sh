@@ -25,15 +25,16 @@ trap 'kill "$STUB_PID" 2>/dev/null || true; rm -f "$CAPTURE"' EXIT
 sleep 0.5
 
 # Run the wrapper around a child that binds CHILD_PORT and holds it open.
-"$HERE/busybody-run" --name shsmoke --registry-url "http://127.0.0.1:$STUB_PORT" \
+"$HERE/busybody-run" --name shsmoke --group infra --registry-url "http://127.0.0.1:$STUB_PORT" \
   -- sh -c "exec python3 -m http.server $CHILD_PORT" &
 WRAP_PID=$!
 sleep 2
 kill "$WRAP_PID" 2>/dev/null || true
 sleep 0.5
 
-if grep -q '"name":"shsmoke"' "$CAPTURE" && grep -q "\"port\":$CHILD_PORT" "$CAPTURE"; then
-    echo "PASS: registration captured with discovered port"
+if grep -q '"name":"shsmoke"' "$CAPTURE" && grep -q "\"port\":$CHILD_PORT" "$CAPTURE" \
+   && grep -q '"group":"infra"' "$CAPTURE"; then
+    echo "PASS: registration captured with discovered port and group"
     exit 0
 fi
 echo "FAIL: expected registration not captured. Captured:"; cat "$CAPTURE"

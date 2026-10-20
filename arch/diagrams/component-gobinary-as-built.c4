@@ -1,0 +1,53 @@
+// As-built components of the Go binary.
+// Derived from: go/main.go, go/config.go, go/run.go, go/register.go, go/discover_linux.go.
+
+model {
+    extend busybodyclient.gobinary {
+        component maincmd {
+            title 'main.go'
+            description 'Entrypoint and hand-rolled flag parser for the `run` subcommand. Rejects an unknown flag, a --port outside 1..65535, a missing --name, or a missing command after --, each with exit code 2 and usage.'
+            technology 'Go package main'
+        }
+
+        component config {
+            title 'config.go'
+            description 'Config struct plus defaults: host from os.Hostname(), registry URL http://localhost:5150, Port 0 meaning auto-discover.'
+            technology 'Go struct'
+        }
+
+        component runloop {
+            title 'run.go'
+            description 'Starts the child with inherited stdio, spawns the signal forwarder and the register loop, waits on the child, then closes stop and waits for the register loop to observe it before returning the child exit code. Loop timings are package vars so tests can shrink them.'
+            technology 'Go goroutines and channels'
+        }
+
+        component register {
+            title 'register.go'
+            description 'Builds the JSON payload (pid marshalled as a string, because the server requires it) and POSTs it to registryURL + /api/register. Any non-2xx is an error to the caller.'
+            technology 'net/http + encoding/json'
+        }
+
+        component discover {
+            title 'discover_linux.go'
+            description 'Linux-only port discovery: collects socket inodes from /proc/PID/fd, then scans /proc/net/tcp and /proc/net/tcp6 for the first LISTEN row (st field 0A) owning one of them, and parses the hex port. Build-tagged to linux by filename, so the binary has no discovery on other platforms.'
+            technology '/proc parsing'
+        }
+
+        maincmd -[ipc]-> config "defaultConfig() then flag overrides"
+        maincmd -[ipc]-> runloop "run(cfg); os.Exit with its return"
+        runloop -[ipc]-> discover "waitForPort polls every 200ms for ~10s unless --port was given"
+        runloop -[ipc]-> register "buildPayload + postRegister once, then every 60s until stop"
+    }
+
+    busybodyclient.gobinary.register -[http]-> busybody "POST /api/register"
+    busybodyclient.gobinary.discover -[ipc]-> procfs "Reads /proc/PID/fd and /proc/net/tcp{,6}"
+    busybodyclient.gobinary.runloop -[signal]-> childapp "Starts, signals and reaps the child"
+}
+
+views {
+    view of busybodyclient.gobinary {
+        title "Go Binary Components"
+        description "Parse, launch, discover, register — the four files that make up the binary, and where each one touches the outside world."
+        include busybodyclient.gobinary.*, busybody, procfs, childapp
+    }
+}

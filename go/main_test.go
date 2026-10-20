@@ -30,13 +30,13 @@ func TestParseRunArgs_Defaults(t *testing.T) {
 
 func TestParseRunArgs_Explicit(t *testing.T) {
 	cfg, err := parseRunArgs([]string{
-		"--name", "bar", "--port", "4000", "--host", "devbox",
+		"--name", "bar", "--port", "4000", "--host", "devbox", "--group", "infra",
 		"--registry-url", "http://reg:9999", "--", "run.sh",
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if cfg.Port != 4000 || cfg.Host != "devbox" || cfg.RegistryURL != "http://reg:9999" {
+	if cfg.Port != 4000 || cfg.Host != "devbox" || cfg.Group != "infra" || cfg.RegistryURL != "http://reg:9999" {
 		t.Errorf("bad explicit parse: %+v", cfg)
 	}
 }

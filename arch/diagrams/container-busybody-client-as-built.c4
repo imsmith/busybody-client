@@ -1,0 +1,50 @@
+// As-built container view of busybody-client.
+// Two independent implementations of the same CLI contract; they share no code.
+// Derived from: Makefile, go/, sh/.
+
+model {
+    extend busybodyclient {
+        gobinary = container {
+            title 'busybody (Go binary)'
+            description 'Module busybody-client, Go 1.23, standard library only. Built with CGO_ENABLED=0 to ../busybody as a static binary for containers and hosts with no interpreter. Sole subcommand is `run`; anything else prints usage and exits 2.'
+            technology 'Go, stdlib only'
+        }
+
+        shwrapper = container {
+            title 'sh/busybody-run'
+            description 'POSIX sh sidecar for the dev box. Needs curl and ss (iproute2). Same flags, same defaults, same exit-code contract as the binary. Unlike the binary, it keeps watching for a port past the ~10s timeout, warning once.'
+            technology 'POSIX sh + curl + iproute2'
+        }
+
+        shtests = container {
+            title 'sh test harness'
+            description 'sh/test-smoke.sh and sh/test-exit-code.sh, run by `make test-sh`. The Go side is covered by *_test.go via `make test`.'
+            technology 'POSIX sh'
+        }
+
+        developer -[ipc]-> gobinary "busybody run --name NAME [--port|--host|--registry-url] -- CMD"
+        developer -[ipc]-> shwrapper "busybody-run --name NAME [--port|--host|--registry-url] -- CMD"
+
+        gobinary -[ipc]-> childapp "exec.Command, stdio inherited"
+        shwrapper -[ipc]-> childapp "Backgrounded, $! is the app PID"
+        gobinary -[signal]-> childapp "signal.Notify -> cmd.Process.Signal"
+        shwrapper -[signal]-> childapp "trap TERM/INT -> kill -s"
+
+        gobinary -[ipc]-> procfs "/proc/PID/fd inodes matched against /proc/net/tcp and tcp6 LISTEN rows"
+        shwrapper -[ipc]-> procfs "ss -Htlnp filtered by pid=CHILD_PID"
+
+        gobinary -[http]-> busybody "net/http POST /api/register, 3s timeout"
+        shwrapper -[http]-> busybody "curl POST /api/register"
+
+        shtests -[ipc]-> shwrapper "Smoke and exit-code assertions"
+    }
+}
+
+views {
+    view of busybodyclient {
+        title "busybody-client Containers"
+        description "Two parallel implementations of one CLI contract, plus the sh test harness. No shared runtime between them."
+        include busybodyclient.gobinary, busybodyclient.shwrapper, busybodyclient.shtests,
+            developer, childapp, busybody, procfs
+    }
+}
