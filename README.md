@@ -15,12 +15,34 @@ endpoint, registers, and heartbeats. It is deliberately **not** the
 busybody app: no Phoenix, no endpoint, nothing starts unless you put
 it in your tree. The `go/` and `sh/` directories are ignored by Mix.
 
-```elixir
-# config/dev.exs: OS-assigned port, all interfaces. Fixed ports on
-# loopback are the problem busybody exists to end.
-config :my_app, MyAppWeb.Endpoint,
-  http: [ip: {0, 0, 0, 0}, port: 0]
+### Do not pick a port
 
+**The app must not choose its own port.** Busybody exists so that no
+one has to. Bind `port: 0` and let the OS assign one; the client reads
+the bound port from the endpoint and reports it. A fixed port defeats
+the directory, and the client logs a warning when it sees one.
+
+The port is set in exactly one place, `config/runtime.exs`, and it is
+one line:
+
+```elixir
+config :my_app, MyAppWeb.Endpoint,
+  http: [ip: {0, 0, 0, 0}, port: String.to_integer(System.get_env("PORT", "0"))]
+```
+
+Remove the `http:` lines `phx.new` put in `config/dev.exs` and the prod
+block of `runtime.exs`; a second `http:` anywhere silently wins and you
+are back on 4000. Check with:
+
+```sh
+grep -n 'http:' config/*.exs
+```
+
+Likewise never write `server: false` into config: an explicit `:server`
+key overrides `mix phx.server`, the endpoint never binds, and there is
+no port to report. Set `server: true` only, and only for releases.
+
+```elixir
 # mix.exs
 {:busybody_client, github: "imsmith/busybody-client", only: :dev}
 

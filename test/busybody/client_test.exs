@@ -44,6 +44,53 @@ defmodule Busybody.ClientTest do
       assert Client.resolve_port(endpoint: NoServer) == {:error, :no_server_found}
     end
 
+    test "warns once when the endpoint has a fixed port" do
+      defmodule Fixed do
+        def server_info(:http), do: {:ok, {{127, 0, 0, 1}, 4000}}
+        def config(:http), do: [port: 4000]
+      end
+
+      defmodule Random do
+        def server_info(:http), do: {:ok, {{0, 0, 0, 0}, 41631}}
+        def config(:http), do: [port: 0]
+      end
+
+      log =
+        ExUnit.CaptureLog.capture_log(fn ->
+          {:ok, pid} =
+            Client.start_link(
+              name: "fixed",
+              endpoint: Fixed,
+              process_name: :fixed_client,
+              registry_url: "http://127.0.0.1:9"
+            )
+
+          send(pid, :heartbeat)
+          send(pid, :heartbeat)
+          :sys.get_state(pid)
+          GenServer.stop(pid)
+        end)
+
+      assert [_] = Regex.scan(~r/binds fixed port 4000/, log)
+
+      log =
+        ExUnit.CaptureLog.capture_log(fn ->
+          {:ok, pid} =
+            Client.start_link(
+              name: "random",
+              endpoint: Random,
+              process_name: :random_client,
+              registry_url: "http://127.0.0.1:9"
+            )
+
+          send(pid, :heartbeat)
+          :sys.get_state(pid)
+          GenServer.stop(pid)
+        end)
+
+      refute log =~ "fixed port"
+    end
+
     test "raises when neither port nor endpoint given" do
       assert_raise ArgumentError, ~r/requires either/, fn ->
         Client.resolve_port(name: "myapp")

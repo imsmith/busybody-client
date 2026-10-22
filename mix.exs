@@ -16,7 +16,7 @@ defmodule BusybodyClient.MixProject do
 
   # Library only: no `mod`, so consumers never start anything they did not ask for.
   def application do
-    [extra_applications: [:logger, :inets]]
+    [extra_applications: [:logger, :inets, :public_key]]
   end
 
   defp deps do

@@ -2,6 +2,10 @@ defmodule Busybody.Client do
   @moduledoc """
   GenServer for consumer apps to register with the Busybody directory.
 
+  Do not pick a port. Bind the endpoint with `port: 0` and the client
+  reports whatever the OS assigned; that is the whole point of the
+  directory. A fixed port in the endpoint config is logged as a warning.
+
   Starts with no port and resolves it on each tick, so an app booted
   without a server (`mix run`, Mix tasks, tests) idles instead of
   crashing. Registry errors are logged and ignored.
@@ -16,7 +20,7 @@ defmodule Busybody.Client do
   Options:
     * `:name` - app name to register (required)
     * `:endpoint` - Phoenix endpoint module, used to resolve port (required unless `:port` given)
-    * `:port` - explicit port (overrides endpoint resolution)
+    * `:port` - explicit port, for a non-Phoenix listener only; with an endpoint, use `port: 0` there
     * `:registry_url` - defaults to "http://localhost:5150"
     * `:host` - defaults to system hostname
     * `:group` - optional group membership shown in the directory
@@ -130,6 +134,7 @@ defmodule Busybody.Client do
     state =
       case resolve_port(state.opts) do
         {:ok, port} when port > 0 ->
+          if state.port == 0, do: warn_fixed_port(state.opts)
           do_register(state.registry_url, build_payload(state.opts, port))
           %{state | port: port}
 
@@ -139,6 +144,19 @@ defmodule Busybody.Client do
 
     schedule_heartbeat(state.heartbeat_interval)
     {:noreply, state}
+  end
+
+  # Once, on first resolution: a hand-picked port is the thing busybody replaces.
+  defp warn_fixed_port(opts) do
+    with endpoint when endpoint != nil <- Keyword.get(opts, :endpoint),
+         fixed when is_integer(fixed) and fixed > 0 <-
+           Keyword.get(endpoint.config(:http) || [], :port) do
+      Logger.warning(
+        "Busybody: #{inspect(endpoint)} binds fixed port #{fixed}. Set `http: [port: 0]` and let busybody track it."
+      )
+    else
+      _ -> :ok
+    end
   end
 
   defp do_register(registry_url, payload) do
